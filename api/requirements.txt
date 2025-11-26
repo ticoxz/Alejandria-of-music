@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+rich
+httpx
+unidecode
+ua-generator
+yt-dlp
+spotipy
+python-multipart
+python-dotenv

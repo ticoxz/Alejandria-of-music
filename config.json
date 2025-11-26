@@ -1,0 +1,17 @@
+{
+    "DEFAULT": {
+        "debug": false,
+        "clean_console": true,
+        "show_message": true
+    },
+    "DOWNLOAD": {
+        "allow_metadata": true,
+        "auto_first": false,
+        "quality": "320K",
+        "thread": 5
+    },
+    "SEARCH": {
+        "limit": 5,
+        "exclude_emoji": false
+    }
+}

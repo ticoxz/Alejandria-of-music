@@ -1,0 +1,157 @@
+name: Build and Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: 'Publish to PyPI (true) or build executables? (false)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  push:
+    tags:
+      - "v*.*"
+
+jobs:
+  publish:
+    if: startsWith(github.ref_name, 'v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get the latest tag
+        id: get_latest_tag
+        run: echo "latest_tag=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade certifi
+          python -m pip install --upgrade setuptools>=61.0.0 wheel twine build
+          python -m pip install -r requirements.txt
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
+
+  build:
+    if: startsWith(github.ref_name, 'v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'false')
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: SpotDown_win
+            executable: SpotDown_win.exe
+            separator: ';'
+
+          - os: macos-latest
+            artifact_name: SpotDown_mac
+            executable: SpotDown_mac
+            separator: ':'
+
+          - os: ubuntu-latest
+            artifact_name: SpotDown_linux_latest
+            executable: SpotDown_linux_latest
+            separator: ':'
+
+          - os: ubuntu-22.04
+            artifact_name: SpotDown_linux_previous
+            executable: SpotDown_linux_previous
+            separator: ':'
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get the latest tag
+        id: get_latest_tag
+        shell: pwsh
+        run: |
+          $latestTag = git describe --tags --abbrev=0
+          echo "latest_tag=$latestTag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade certifi
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Install UPX (Windows/Linux)
+        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-22.04'
+        run: |
+          python -m pip install upx
+          upx --version || echo "UPX not found"
+
+      - name: Build executable with PyInstaller
+        shell: bash
+        run: |
+          UPX_PATH=""
+          if [[ "${{ matrix.os }}" == "windows-latest" || "${{ matrix.os }}" == "ubuntu-latest" || "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
+            UPX_PATH=$(python -c "import upx; print(upx.get_upx_path())" 2>/dev/null || echo "")
+            if [[ -n "$UPX_PATH" ]]; then
+              UPX_ARG="--upx-dir=$UPX_PATH"
+            else
+              UPX_ARG=""
+            fi
+          else
+            UPX_ARG=""
+          fi
+          pyinstaller --onefile \
+            --clean \
+            --strip \
+            --hidden-import=rich \
+            --hidden-import=httpx \
+            --hidden-import=unidecode \
+            --hidden-import=ua_generator \
+            --hidden-import=yt_dlp \
+            --hidden-import=spotipy \
+            --additional-hooks-dir=pyinstaller/hooks \
+            --add-data "SpotDown${{ matrix.separator }}SpotDown" \
+            --name=${{ matrix.artifact_name }} \
+            ${UPX_ARG} run.py
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.executable }}
+
+      - name: Create or update release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/${{ matrix.executable }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
