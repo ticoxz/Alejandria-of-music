@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --neon-pink: #FF10F0;
+  --neon-purple: #7928CA;
 }
 
 @theme inline {
@@ -10,6 +12,8 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-neon-pink: var(--neon-pink);
+  --color-neon-purple: var(--neon-purple);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,8 +23,59 @@
   }
 }
 
+/* Manual Dark Mode Override */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+.light {
+  --background: #f0f0f0;
+  --foreground: #171717;
+  --neon-pink: #D600C4;
+  /* Darker pink for contrast */
+  --neon-purple: #5B1D99;
+  /* Darker purple for contrast */
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+@keyframes border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-border-flow {
+  background-size: 200% 200%;
+  animation: border-flow 3s ease infinite;
+}
+
+@keyframes neon-pulse {
+
+  0%,
+  100% {
+    text-shadow: 0 0 10px rgba(255, 16, 240, 0.5), 0 0 20px rgba(255, 16, 240, 0.3);
+  }
+
+  50% {
+    text-shadow: 0 0 20px rgba(255, 16, 240, 0.8), 0 0 30px rgba(255, 16, 240, 0.5), 0 0 40px rgba(255, 16, 240, 0.3);
+  }
+}
+
+.animate-neon-pulse {
+  animation: neon-pulse 2s infinite;
 }
