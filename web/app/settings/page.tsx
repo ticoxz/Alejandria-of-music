@@ -2,15 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Save, ArrowLeft, Key, CheckCircle2 } from "lucide-react";
+import { Save, ArrowLeft, Key, CheckCircle2, FolderOpen } from "lucide-react";
 import Link from "next/link";
+import DirectoryPicker from "../components/DirectoryPicker";
 
 export default function Settings() {
     const [clientId, setClientId] = useState("");
     const [clientSecret, setClientSecret] = useState("");
+    const [downloadPath, setDownloadPath] = useState("");
     const [quality, setQuality] = useState("320K");
     const [status, setStatus] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isPickerOpen, setIsPickerOpen] = useState(false);
 
     useEffect(() => {
         // Cargar configuración actual al montar
@@ -19,6 +22,7 @@ export default function Settings() {
             .then((data) => {
                 if (data.client_id) setClientId(data.client_id);
                 if (data.client_secret) setClientSecret(data.client_secret);
+                if (data.download_path) setDownloadPath(data.download_path);
             })
             .catch(() => { });
 
@@ -41,41 +45,48 @@ export default function Settings() {
             const response = await fetch("http://localhost:8001/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+                body: JSON.stringify({ 
+                    client_id: clientId, 
+                    client_secret: clientSecret,
+                    download_path: downloadPath 
+                }),
             });
 
             if (response.ok) {
-                setStatus("¡Guardado correctamente! Reinicia el backend para aplicar cambios.");
+                setStatus("Configuración guardada correctamente");
+                setTimeout(() => setStatus(null), 3000);
             } else {
-                setStatus("Error al guardar.");
+                setStatus("Error al guardar");
             }
         } catch (error) {
-            setStatus("Error de conexión.");
+            setStatus("Error de conexión");
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <main className="min-h-screen bg-black text-white selection:bg-green-500 selection:text-black p-8">
+        <div className="min-h-screen bg-black text-white p-8">
             <div className="max-w-2xl mx-auto">
-                <Link href="/" className="inline-flex items-center text-gray-400 hover:text-white mb-8 transition-colors">
-                    <ArrowLeft className="w-5 h-5 mr-2" /> Volver al inicio
-                </Link>
+                <div className="flex items-center gap-4 mb-8">
+                    <Link href="/" className="p-2 hover:bg-gray-800 rounded-full transition-colors">
+                        <ArrowLeft className="w-6 h-6" />
+                    </Link>
+                    <h1 className="text-3xl font-bold flex items-center gap-3">
+                        <Key className="w-8 h-8 text-green-500" />
+                        Configuración
+                    </h1>
+                </div>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-gray-900/50 border border-gray-800 rounded-2xl p-8"
-                >
-                    <div className="flex items-center gap-4 mb-8">
-                        <div className="p-3 bg-green-500/10 rounded-lg">
-                            <Key className="w-8 h-8 text-green-500" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold">Configuración de API</h1>
-                            <p className="text-gray-400">Ingresa tus credenciales de Spotify Developer.</p>
-                        </div>
+                <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 shadow-2xl">
+                    <div className="mb-8">
+                        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            <Key className="w-5 h-5 text-green-500" />
+                            Configuración de API
+                        </h2>
+                        <p className="text-gray-400 text-sm">
+                            Ingresa tus credenciales de Spotify Developer.
+                        </p>
                     </div>
 
                     <form onSubmit={handleSave} className="space-y-6">
@@ -103,6 +114,32 @@ export default function Settings() {
                                 className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
                                 placeholder="Pegar Client Secret aquí"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Carpeta de Descargas (Opcional)
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={downloadPath}
+                                    onChange={(e) => setDownloadPath(e.target.value)}
+                                    className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                                    placeholder="Ej: /Users/tuusuario/Desktop/Musica"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPickerOpen(true)}
+                                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition-colors flex items-center gap-2"
+                                >
+                                    <FolderOpen className="w-5 h-5" />
+                                    Examinar
+                                </button>
+                            </div>
+                            <p className="mt-2 text-xs text-gray-500">
+                                Deja vacío para usar la carpeta por defecto (Música).
+                            </p>
                         </div>
 
                         <div>
@@ -164,8 +201,18 @@ export default function Settings() {
                             </motion.div>
                         )}
                     </form>
-                </motion.div>
+                </div>
             </div>
-        </main>
+
+            <DirectoryPicker
+                isOpen={isPickerOpen}
+                onClose={() => setIsPickerOpen(false)}
+                onSelect={(path) => {
+                    setDownloadPath(path);
+                    setIsPickerOpen(false);
+                }}
+                initialPath={downloadPath}
+            />
+        </div>
     );
 }

@@ -8,6 +8,9 @@ Una biblioteca musical universal que te permite descargar música de múltiples 
 - 🎬 **Descarga desde YouTube** - Extrae audio de alta calidad de videos
 - 🎧 **Descarga desde SoundCloud** - Accede a música independiente
 - 🎨 **Carátulas embebidas automáticamente** en formato JPEG
+- 📂 **Organización Inteligente** - Crea subcarpetas automáticas por Playlist/Álbum
+- 📍 **Ruta de Descarga Personalizada** - Elige dónde guardar tu música
+- 📁 **Explorador de Archivos Integrado** - Navega y crea carpetas desde la app
 - 🖥️ **Interfaz web moderna** construida con Next.js
 - ⚡ **API REST rápida** con FastAPI
 - 🔒 **Configuración segura** con variables de entorno

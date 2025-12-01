@@ -34,7 +34,19 @@ class FileUtils:
         Returns:
             Path: Path to the Music folder
         """
-        music_folder = Path.home() / "Music"
+        # Check for custom download path in environment variables
+        custom_path = os.getenv("DOWNLOAD_PATH")
+        if custom_path:
+            music_folder = Path(custom_path)
+            if not music_folder.exists():
+                try:
+                    music_folder.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    console.print(f"[red]Error creating custom download path: {e}. Falling back to default.[/red]")
+                    music_folder = Path.home() / "Music"
+        else:
+            music_folder = Path.home() / "Music"
+
         if not music_folder.exists():
 
             # If "Music" does not exist, check for Italian "Musica" and rename it to "Music"

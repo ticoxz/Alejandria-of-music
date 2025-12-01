@@ -63,6 +63,16 @@ class TracklistRequest(BaseModel):
 class Settings(BaseModel):
     client_id: str
     client_secret: str
+    download_path: Optional[str] = None
+
+@app.get("/api/settings")
+def get_settings():
+    """Obtiene la configuración actual"""
+    return {
+        "client_id": os.getenv("SPOTIPY_CLIENT_ID", ""),
+        "client_secret": os.getenv("SPOTIPY_CLIENT_SECRET", ""),
+        "download_path": os.getenv("DOWNLOAD_PATH", "")
+    }
 
 @app.get("/")
 def read_root():
@@ -190,7 +200,7 @@ async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks
     task_id = str(uuid.uuid4())
     
     # --- Helper for batch download ---
-    def batch_download_wrapper(tracks, quality, task_id):
+    def batch_download_wrapper(tracks, quality, task_id, subdirectory=None):
         total = len(tracks)
         success_count = 0
         
@@ -260,8 +270,9 @@ async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks
                             download_progress[task_id]["percent"] = 100
 
                     # Download
+                    # Download
                     # Ensure spotify_info (track) has cover_url
-                    if download_track(video_info_to_download, track, quality, track_hook, overwrite=True):
+                    if download_track(video_info_to_download, track, quality, track_hook, overwrite=True, subdirectory=subdirectory):
                         success_count += 1
             except Exception as e:
                 print(f"Error downloading {track.get('title')}: {e}")
@@ -392,7 +403,7 @@ async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks
                     "current_track": 0
                 }
 
-                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id)
+                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, subdirectory=collection_data.get('title', 'Playlist'))
                 
                 return {
                     "status": "started", 
@@ -466,7 +477,7 @@ async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks
                         download_progress[task_id]["error"] = str(e)
 
                 # Ejecutar descarga en background
-                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id)
+                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, subdirectory=info.get('title', 'Playlist'))
                 
                 response = {
                     "status": "started", 
@@ -559,12 +570,66 @@ def save_settings(settings: Settings):
     with open(env_path, "w") as f:
         f.write(f"SPOTIPY_CLIENT_ID={settings.client_id}\n")
         f.write(f"SPOTIPY_CLIENT_SECRET={settings.client_secret}\n")
+        if settings.download_path:
+            f.write(f"DOWNLOAD_PATH={settings.download_path}\n")
     
     # Actualizar variables de entorno en memoria para efecto inmediato (parcial)
     os.environ["SPOTIPY_CLIENT_ID"] = settings.client_id
     os.environ["SPOTIPY_CLIENT_SECRET"] = settings.client_secret
+    if settings.download_path:
+        os.environ["DOWNLOAD_PATH"] = settings.download_path
     
     return {"status": "saved"}
+
+@app.get("/api/browse")
+def browse_directory(path: Optional[str] = None):
+    """Lista directorios en la ruta especificada"""
+    try:
+        if not path:
+            path = os.path.expanduser("~")
+        
+        # Validar que la ruta existe
+        if not os.path.exists(path):
+            return {"error": "Path does not exist", "current_path": path, "folders": []}
+            
+        # Listar solo directorios
+        items = os.listdir(path)
+        folders = []
+        
+        # Agregar opción para subir de nivel si no estamos en la raíz
+        parent = os.path.dirname(path)
+        if parent and parent != path:
+            folders.append({"name": "..", "path": parent})
+            
+        for item in items:
+            full_path = os.path.join(path, item)
+            if os.path.isdir(full_path) and not item.startswith("."):
+                folders.append({"name": item, "path": full_path})
+        
+        # Ordenar alfabéticamente
+        folders.sort(key=lambda x: x["name"])
+        
+        return {"current_path": path, "folders": folders}
+    except Exception as e:
+        return {"error": str(e), "current_path": path, "folders": []}
+
+class CreateFolderRequest(BaseModel):
+    path: str
+    name: str
+
+@app.post("/api/create_folder")
+def create_folder(data: CreateFolderRequest):
+    """Crea una nueva carpeta"""
+    try:
+        new_path = os.path.join(data.path, data.name)
+        
+        if os.path.exists(new_path):
+            raise HTTPException(status_code=400, detail="La carpeta ya existe")
+            
+        os.makedirs(new_path)
+        return {"status": "created", "path": new_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

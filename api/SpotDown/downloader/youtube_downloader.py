@@ -22,7 +22,7 @@ auto_first = config_manager.get("DOWNLOAD", "auto_first")
 
 
 class YouTubeDownloader:
-    def download(self, video_info: Dict, spotify_info: Dict, quality: str = "320K", progress_hook: Optional[Callable] = None) -> bool:
+    def download(self, video_info: Dict, spotify_info: Dict, quality: str = "320K", progress_hook: Optional[Callable] = None, subdirectory: Optional[str] = None) -> bool:
         """
         Download YouTube video as mp3 using yt_dlp library
 
@@ -31,12 +31,20 @@ class YouTubeDownloader:
             spotify_info (Dict): Spotify track info
             quality (str): Audio quality (e.g. "320K", "192K")
             progress_hook (Callable): Function to call with progress updates
+            subdirectory (Optional[str]): Subdirectory name for the download
 
         Returns:
             bool: True if download succeeded
         """
         try:
             music_folder = file_utils.get_music_folder()
+            
+            if subdirectory:
+                clean_subdir = file_utils.sanitize_filename(subdirectory)
+                music_folder = music_folder / clean_subdir
+                if not music_folder.exists():
+                    music_folder.mkdir(parents=True, exist_ok=True)
+
             filename = file_utils.create_filename(
                 spotify_info.get('artist', 'Unknown Artist'),
                 spotify_info.get('title', video_info.get('title', 'Unknown Title'))

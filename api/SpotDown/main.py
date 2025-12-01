@@ -39,10 +39,14 @@ def search_on_youtube(query: str, spotify_info: Optional[Dict] = None) -> List[D
         return youtube_extractor.search(query, spotify_info)
 
 
-def download_track(video_info: Dict, spotify_info: Dict, quality: str = "320K", progress_hook: Optional[Callable] = None, overwrite: bool = False) -> bool:
+def download_track(video_info: Dict, spotify_info: Dict, quality: str = "320K", progress_hook: Optional[Callable] = None, overwrite: bool = False, subdirectory: Optional[str] = None) -> bool:
     """Download a single track and add metadata"""
     downloader = YouTubeDownloader()
     music_folder = file_utils.get_music_folder()
+    
+    if subdirectory:
+        clean_subdir = file_utils.sanitize_filename(subdirectory)
+        music_folder = music_folder / clean_subdir
 
     artist = spotify_info['artist']
     title = spotify_info['title']
@@ -55,7 +59,7 @@ def download_track(video_info: Dict, spotify_info: Dict, quality: str = "320K", 
     
     console.show_download_info(music_folder, filename)
     console.show_download_start(video_info['title'], video_info['url'])
-    return downloader.download(video_info, spotify_info, quality, progress_hook)
+    return downloader.download(video_info, spotify_info, quality, progress_hook, subdirectory)
 
 
 def handle_playlist_download(tracks: List[Dict], max_results: int):
