@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Dict, Optional, Callable
 import traceback
+from pathlib import Path
 
 # External imports
 import httpx
@@ -100,25 +101,36 @@ class YouTubeDownloader:
                         cover_path = None
 
             # Configure yt-dlp options
+            is_flac = quality.upper() == "FLAC"
+            ext = "flac" if is_flac else "mp3"
+            
+            # Update output template with correct extension
+            output_template = str(music_folder / f"{filename}.%(ext)s")
+
+            postprocessors = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': ext,
+            }]
+
+            if not is_flac:
+                postprocessors[0]['preferredquality'] = quality.replace('K', '')
+
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': output_template,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': quality.replace('K', ''),
-                }],
+                'postprocessors': postprocessors,
                 'ffmpeg_location': file_utils.ffmpeg_path,
-                'quiet': True,
-                'no_warnings': True,
+                'quiet': False, # Enable output for debugging
+                'no_warnings': False,
                 'noplaylist': True,
-                'verbose': True # Enable verbose logging
+                'verbose': True, # Enable verbose logging
+                # 'cookiesfrombrowser' will be set in the loop below
             }
             
             logging.info(f"DEBUG: ffmpeg_path: {file_utils.ffmpeg_path}")
-            logging.info(f"DEBUG: ydl_opts: {ydl_opts}")
+            # logging.info(f"DEBUG: ydl_opts: {ydl_opts}")
 
-            if allow_metadata:
+            if allow_metadata and not is_flac:
                 ydl_opts['writethumbnail'] = False 
                 ydl_opts['postprocessors'].append({'key': 'FFmpegMetadata', 'add_metadata': True})
             
@@ -126,12 +138,73 @@ class YouTubeDownloader:
             if progress_hook:
                 ydl_opts['progress_hooks'] = [progress_hook]
 
-            # Run download
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([video_info['url']])
+            # Check for cookies.txt in current directory
+            cookies_file = Path("cookies.txt")
+            if not cookies_file.exists():
+                # Check in parent directory (useful for dev env)
+                cookies_file = Path("..") / "cookies.txt"
+            
+            if cookies_file.exists():
+                logging.info(f"Found cookies.txt at {cookies_file.resolve()}")
+                ydl_opts['cookiefile'] = str(cookies_file.resolve())
+                
+                # Run download with cookiefile
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([video_info['url']])
+                    
+                    if not auto_first:
+                        console.print("[red]Download completed![/red]")
+                    logging.info(f"Download completed using cookies.txt")
+                    
+                    # Manually embed cover art if available (duplicated logic, could be refactored)
+                    final_filename = f"{filename}.{ext}"
+                    downloaded_file = music_folder / final_filename
+                    if cover_path and cover_path.exists() and downloaded_file.exists():
+                         try:
+                            if add_cover_art(downloaded_file, cover_path):
+                                logging.info(f"Embedded cover art into {downloaded_file}")
+                            else:
+                                logging.warning("Failed to embed cover art")
+                            cover_path.unlink()
+                         except Exception as ex:
+                            logging.warning(f"Failed to process cover art: {ex}")
+                    
+                    return True
+
+                except Exception as e:
+                    logging.error(f"Error downloading with cookies.txt: {e}")
+                    # Fallback to browser if cookies.txt fails? Maybe not, usually implies bad cookies.
+                    # But let's allow fallback just in case.
+                    logging.info("Falling back to browser cookies...")
+
+            # Run download with browser fallback
+            browsers_to_try = ['chrome', 'edge']
+            download_success = False
+            last_error = None
+
+            for browser in browsers_to_try:
+                try:
+                    logging.info(f"Attempting download using cookies from: {browser}")
+                    current_opts = ydl_opts.copy()
+                    current_opts['cookiesfrombrowser'] = (browser, )
+                    
+                    with yt_dlp.YoutubeDL(current_opts) as ydl:
+                        ydl.download([video_info['url']])
+                    
+                    download_success = True
+                    logging.info(f"Download attempt with {browser} succeeded.")
+                    break # Success, exit loop
+                except Exception as e:
+                    logging.warning(f"Download attempt with {browser} failed: {e}")
+                    last_error = e
+            
+            if not download_success:
+                logging.error(f"All download attempts failed. Last error: {last_error}")
+                return False
 
             # Check if file exists
-            final_filename = f"{filename}.mp3"
+            final_filename = f"{filename}.{ext}"
             downloaded_file = music_folder / final_filename
             
             if downloaded_file.exists():
@@ -155,7 +228,10 @@ class YouTubeDownloader:
 
                 return True
             else:
-                logging.error("Download apparently succeeded but file not found")
+                logging.error(f"Download apparently succeeded but file not found: {downloaded_file}")
+                logging.error(f"Directory contents of {music_folder}:")
+                for f in music_folder.iterdir():
+                    logging.error(f" - {f.name}")
                 return False
 
         except Exception as e:

@@ -32,8 +32,12 @@ const translations = {
     spotifyHelp: "¡Soporte completo! Puedes descargar canciones individuales, álbumes completos y playlists enteras.",
     otherHelp: "Actualmente solo soportamos la descarga de canciones individuales (una por una). Las playlists de estas plataformas aún no están soportadas.",
     tracklistHelp: "Puedes pegar una lista de canciones (Artista - Titulo). ¡Nuevo! Ahora soportamos la descarga de portadas (cover art) también en tracklists.",
+    flacHelp: "Descarga audio sin pérdida de calidad en formato FLAC. Disponible en Configuración.",
+    djPriorityHelpModal: "Prioriza versiones 'Extended Mix', 'Original Mix' o 'Club Mix'. También favorece canciones más largas (hasta 5 min extra) ideales para mezclar.",
     recentHistory: "Descargas Recientes",
-    clearHistory: "Borrar Historial"
+    clearHistory: "Borrar Historial",
+    djPriority: "Prioridad DJ",
+    djPriorityHelp: "Prioriza versiones 'Extended Mix', 'Original Mix' o 'Club Mix' para facilitar la mezcla."
   },
   en: {
     title: "Alejandria of",
@@ -54,9 +58,52 @@ const translations = {
     spotifyHelp: "Full support! You can download individual songs, full albums, and entire playlists.",
     otherHelp: "Currently we only support downloading individual songs (one by one). Playlists from these platforms are not yet supported.",
     tracklistHelp: "You can paste a list of songs (Artist - Title). New! We now support downloading cover art in tracklists too.",
+    flacHelp: "Download lossless quality audio in FLAC format. Available in Settings.",
+    djPriorityHelpModal: "Prioritizes 'Extended Mix', 'Original Mix' or 'Club Mix' versions. Also favors longer tracks (up to 5 min extra) ideal for mixing.",
     recentHistory: "Recent Downloads",
-    clearHistory: "Clear History"
+    clearHistory: "Clear History",
+    djPriority: "DJ Priority",
+    djPriorityHelp: "Prioritizes 'Extended Mix', 'Original Mix' or 'Club Mix' versions for easier mixing."
   }
+};
+
+const PlatformIcon = ({ platform }: { platform: string }) => {
+  switch (platform) {
+    case "spotify":
+      return (
+        <svg className="w-4 h-4 text-[#1DB954]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+        </svg>
+      );
+    case "youtube":
+      return (
+        <svg className="w-4 h-4 text-[#FF0000]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+        </svg>
+      );
+    case "soundcloud":
+      return (
+        <svg className="w-4 h-4 text-[#FF5500]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.56 8.87V17h8.76c2.03 0 3.68-1.69 3.68-3.78 0-2.09-1.65-3.78-3.68-3.78h-.44c-.23-2.36-2.22-4.22-4.66-4.22-2.58 0-4.68 2.1-4.68 4.69 0 .32.04.64.1.96zm-1.6.43v7.7h-1.6v-7.2c0-.17.13-.3.3-.3h1c.17 0 .3.13.3.3zm-3.2.8v6.9h-1.6v-6.4c0-.17.13-.3.3-.3h1c.17 0 .3.13.3.3zm-3.2 1.6v5.3H1.96v-4.8c0-.17.13-.3.3-.3h1c.17 0 .3.13.3.3z" />
+        </svg>
+      );
+    case "tracklist":
+      return <ListMusic className="w-4 h-4 text-blue-400" />;
+    default:
+      return <Music className="w-4 h-4 text-gray-400" />;
+  }
+};
+
+const FormatBadge = ({ format }: { format: string }) => {
+  const isFlac = format === "FLAC";
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${isFlac
+      ? "bg-gradient-to-r from-yellow-400 to-orange-500 text-white border border-yellow-300"
+      : "bg-gradient-to-r from-gray-500 to-gray-600 text-white border border-gray-400"
+      }`}>
+      {format}
+    </span>
+  );
 };
 
 export default function Home() {
@@ -79,6 +126,9 @@ export default function Home() {
   const [tracklistText, setTracklistText] = useState("");
   const [parsedTracks, setParsedTracks] = useState<any[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+
+  // DJ Priority State
+  const [djPriority, setDjPriority] = useState(false);
 
   const t = translations[lang];
 
@@ -206,14 +256,16 @@ export default function Home() {
 
         body = {
           spotify_url: urlToDownload,
-          quality: quality
+          quality: quality,
+          djPriority: djPriority
         };
       } else {
         // Tracklist mode
         body = {
           tracklist_mode: true,
           tracks: parsedTracks,
-          quality: quality
+          quality: quality,
+          djPriority: djPriority
         };
       }
 
@@ -272,11 +324,25 @@ export default function Home() {
 
             // Add to history
             if (display.title) {
+              const currentQuality = localStorage.getItem("audio_quality") || "320K";
+              const format = currentQuality === "FLAC" ? "FLAC" : "MP3";
+
+              let platform = "other";
+              if (mode === "tracklist") {
+                platform = "tracklist";
+              } else if (searchedUrl) {
+                if (searchedUrl.includes("spotify")) platform = "spotify";
+                else if (searchedUrl.includes("youtu")) platform = "youtube";
+                else if (searchedUrl.includes("soundcloud")) platform = "soundcloud";
+              }
+
               addToHistory({
                 title: display.title,
                 artist: display.artist,
                 cover: display.cover,
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                platform,
+                format
               });
             }
           } else if (data.status === 'error') {
@@ -335,7 +401,7 @@ export default function Home() {
           <p className={`text-xl max-w-2xl mx-auto ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
             {t.subtitle}
             <br />
-            <span className="text-neon-pink font-semibold drop-shadow-[0_0_10px_rgba(255,16,240,0.5)]">{t.slogan}</span>
+            <span className="text-neon-pink font-semibold drop-shadow-[0_0_10px_rgba(var(--neon-glow-rgb),0.5)]">{t.slogan}</span>
           </p>
         </motion.div>
 
@@ -350,21 +416,21 @@ export default function Home() {
 
           <button
             onClick={toggleTheme}
-            className="p-3 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white bg-gray-200 dark:bg-gray-900/50 rounded-full hover:bg-gray-300 dark:hover:bg-gray-800 transition-all"
+            className={`p-3 rounded-full transition-all ${theme === 'dark' ? 'text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800' : 'text-gray-700 hover:text-black bg-gray-200 hover:bg-gray-300'}`}
           >
             {theme === 'dark' ? <Moon className="w-6 h-6" /> : <Sun className="w-6 h-6" />}
           </button>
 
           <button
             onClick={() => setShowHelp(true)}
-            className="p-3 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white bg-gray-200 dark:bg-gray-900/50 rounded-full hover:bg-gray-300 dark:hover:bg-gray-800 transition-all"
+            className={`p-3 rounded-full transition-all ${theme === 'dark' ? 'text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800' : 'text-gray-700 hover:text-black bg-gray-200 hover:bg-gray-300'}`}
             title={t.helpTitle}
           >
             <HelpCircle className="w-6 h-6" />
           </button>
           <Link
             href="/settings"
-            className="p-3 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white bg-gray-200 dark:bg-gray-900/50 rounded-full hover:bg-gray-300 dark:hover:bg-gray-800 transition-all"
+            className={`p-3 rounded-full transition-all ${theme === 'dark' ? 'text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800' : 'text-gray-700 hover:text-black bg-gray-200 hover:bg-gray-300'}`}
             title="Configuración"
           >
             <SettingsIcon className="w-6 h-6" />
@@ -372,34 +438,54 @@ export default function Home() {
         </div>
 
         {/* Mode Toggle */}
-        <div className="flex gap-4 mb-8 bg-gray-200 dark:bg-gray-900/50 p-1 rounded-xl backdrop-blur-sm border border-gray-300 dark:border-gray-800">
+        <div className="flex flex-col items-center gap-4 mb-8">
+          <div className="flex gap-4 bg-gray-200 dark:bg-gray-900/50 p-1 rounded-xl backdrop-blur-sm border border-gray-300 dark:border-gray-800">
+            <button
+              onClick={() => {
+                setMode("url");
+                setError(null);
+                setDownloadStatus(null);
+                setParsedTracks([]); // Clear tracklist results
+              }}
+              className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${mode === "url"
+                ? "bg-neon-pink text-white shadow-[0_0_15px_rgba(var(--neon-glow-rgb),0.4)]"
+                : theme === 'dark'
+                  ? "text-gray-400 hover:text-white hover:bg-gray-800"
+                  : "text-gray-700 hover:text-black hover:bg-gray-300"
+                }`}
+            >
+              <Music className="w-4 h-4" /> {t.urlMode}
+            </button>
+            <button
+              onClick={() => {
+                setMode("tracklist");
+                setError(null);
+                setDownloadStatus(null);
+                setInfo(null); // Clear URL results
+              }}
+              className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${mode === "tracklist"
+                ? "bg-neon-pink text-white shadow-[0_0_15px_rgba(var(--neon-glow-rgb),0.4)]"
+                : theme === 'dark'
+                  ? "text-gray-400 hover:text-white hover:bg-gray-800"
+                  : "text-gray-700 hover:text-black hover:bg-gray-300"
+                }`}
+            >
+              <FileText className="w-4 h-4" /> {t.tracklistMode}
+            </button>
+          </div>
+
+          {/* DJ Priority Toggle */}
           <button
-            onClick={() => {
-              setMode("url");
-              setError(null);
-              setDownloadStatus(null);
-              setParsedTracks([]); // Clear tracklist results
-            }}
-            className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${mode === "url"
-              ? "bg-neon-pink text-white shadow-[0_0_15px_rgba(255,16,240,0.4)]"
-              : "text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-300 dark:hover:bg-gray-800"
+            onClick={() => setDjPriority(!djPriority)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border ${djPriority
+              ? "bg-purple-600/20 border-purple-500 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]"
+              : "bg-transparent border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400"
               }`}
+            title={t.djPriorityHelp}
           >
-            <Music className="w-4 h-4" /> {t.urlMode}
-          </button>
-          <button
-            onClick={() => {
-              setMode("tracklist");
-              setError(null);
-              setDownloadStatus(null);
-              setInfo(null); // Clear URL results
-            }}
-            className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${mode === "tracklist"
-              ? "bg-neon-pink text-white shadow-[0_0_15px_rgba(255,16,240,0.4)]"
-              : "text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-300 dark:hover:bg-gray-800"
-              }`}
-          >
-            <FileText className="w-4 h-4" /> {t.tracklistMode}
+            <Disc className={`w-4 h-4 ${djPriority ? "animate-spin-slow" : ""}`} />
+            {t.djPriority}
+            <Disc className={`w-3 h-3 ${djPriority ? "animate-spin text-purple-500" : "text-gray-600"}`} />
           </button>
         </div>
 
@@ -435,7 +521,7 @@ export default function Home() {
               className="mt-12 w-full max-w-2xl"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold flex items-center gap-2 dark:text-white text-gray-800">
+                <h3 className={`text-lg font-bold flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
                   <Clock className="w-5 h-5 text-neon-pink" />
                   {t.recentHistory}
                 </h3>
@@ -449,19 +535,28 @@ export default function Home() {
                   {t.clearHistory}
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {recentDownloads.map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 rounded-xl">
+                  <div key={i} className={`flex items-center gap-4 p-4 border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group ${theme === 'dark'
+                    ? 'bg-gray-900/40 border-gray-800 hover:border-neon-pink/50'
+                    : 'bg-white border-gray-200 hover:border-neon-pink/50'
+                    }`}>
                     {item.cover ? (
-                      <img src={item.cover} alt="" className="w-10 h-10 rounded object-cover" />
+                      <img src={item.cover} alt="" className="w-12 h-12 rounded-lg object-cover shadow-sm group-hover:scale-105 transition-transform" />
                     ) : (
-                      <div className="w-10 h-10 bg-gray-200 dark:bg-gray-800 rounded flex items-center justify-center">
-                        <Music className="w-5 h-5 text-gray-400" />
+                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                        <Music className="w-6 h-6 text-gray-400" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate dark:text-white text-gray-900">{item.title}</p>
-                      <p className="text-xs text-gray-500 truncate">{item.artist}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className={`font-bold truncate text-base ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{item.title}</p>
+                        {item.format && <FormatBadge format={item.format} />}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                        {item.platform && <PlatformIcon platform={item.platform} />}
+                        <p className="truncate">{item.artist}</p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -523,6 +618,24 @@ export default function Home() {
                     </h3>
                     <p className="text-sm">
                       {t.tracklistHelp}
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-xl">
+                    <h3 className="font-semibold dark:text-white text-gray-900 mb-2 flex items-center gap-2">
+                      <Disc className="w-4 h-4 text-yellow-400" /> FLAC
+                    </h3>
+                    <p className="text-sm">
+                      {t.flacHelp}
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-xl">
+                    <h3 className="font-semibold dark:text-white text-gray-900 mb-2 flex items-center gap-2">
+                      <Disc className="w-4 h-4 text-purple-400" /> DJ Priority
+                    </h3>
+                    <p className="text-sm">
+                      {t.djPriorityHelpModal}
                     </p>
                   </div>
 
@@ -590,7 +703,7 @@ export default function Home() {
               {taskId && (
                 <div className="w-full bg-gray-700 rounded-full h-2.5 mb-4 overflow-hidden">
                   <motion.div
-                    className="bg-neon-pink h-2.5 rounded-full shadow-[0_0_10px_rgba(255,16,240,0.5)]"
+                    className="bg-neon-pink h-2.5 rounded-full shadow-[0_0_10px_rgba(var(--neon-glow-rgb),0.5)]"
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.5 }}
@@ -663,7 +776,7 @@ export default function Home() {
               {taskId && (
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4 overflow-hidden">
                   <motion.div
-                    className="bg-neon-pink h-2.5 rounded-full shadow-[0_0_10px_rgba(255,16,240,0.5)]"
+                    className="bg-neon-pink h-2.5 rounded-full shadow-[0_0_10px_rgba(var(--neon-glow-rgb),0.5)]"
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.5 }}

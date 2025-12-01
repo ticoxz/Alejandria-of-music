@@ -8,15 +8,17 @@ Una biblioteca musical universal que te permite descargar música de múltiples 
 - 🎬 **Descarga desde YouTube** - Extrae audio de alta calidad de videos
 - 🎧 **Descarga desde SoundCloud** - Accede a música independiente
 - 🎨 **Carátulas embebidas automáticamente** en formato JPEG
+- 🎯 **Selector de calidad** - Elige entre 128K, 192K, 320K o **FLAC** (sin pérdida)
+- 💿 **Soporte FLAC** - Descarga audio sin pérdida de calidad
+- 🎧 **DJ Priority** - Prioriza versiones Extended/Original/Club Mix para DJs
 - 📂 **Organización Inteligente** - Crea subcarpetas automáticas por Playlist/Álbum
 - 📍 **Ruta de Descarga Personalizada** - Elige dónde guardar tu música
 - 📁 **Explorador de Archivos Integrado** - Navega y crea carpetas desde la app
 - 🖥️ **Interfaz web moderna** construida con Next.js
 - ⚡ **API REST rápida** con FastAPI
 - 🔒 **Configuración segura** con variables de entorno
-- 🎧 **Alta calidad de audio** (hasta 320kbps)
-- 🎯 **Selector de calidad** - Elige entre 128K, 192K o 320K
 - 📋 **Descarga por lotes** - Múltiples canciones simultáneamente
+- 🌐 **Modo Tracklist** - Pega una lista de canciones (Artista - Título) y descárgalas todas
 
 ## 🚀 Guía de Inicio Detallada
 

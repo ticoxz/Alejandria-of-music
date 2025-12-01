@@ -37,13 +37,14 @@ class YouTubeExtractor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def search(self, query: str, spotify_info: Optional[Dict] = None) -> List[Dict]:
+    def search(self, query: str, spotify_info: Optional[Dict] = None, dj_priority: bool = False) -> List[Dict]:
         """
         High-level search method that searches and sorts results
         
         Args:
             query (str): Search query
             spotify_info (Dict, optional): Spotify track info for sorting
+            dj_priority (bool): Whether to prioritize DJ mixes
             
         Returns:
             List[Dict]: Sorted list of found videos
@@ -54,7 +55,7 @@ class YouTubeExtractor:
             return []
             
         if spotify_info:
-            self.sort_by_affinity_and_duration(results, spotify_info)
+            self.sort_by_affinity_and_duration(results, spotify_info, dj_priority)
             
         return results
 
@@ -107,12 +108,12 @@ class YouTubeExtractor:
         
         youtube_results.sort(key=lambda x: x['duration_difference'])
 
-    def sort_by_affinity_and_duration(self, youtube_results: List[Dict], spotify_info: Dict):
+    def sort_by_affinity_and_duration(self, youtube_results: List[Dict], spotify_info: Dict, dj_priority: bool = False):
         """
         Sort results by artist match priority, then duration, then title affinity.
         Prioritizes exact artist matches in channel name over duration similarity.
         """
-        logging.info(f"Sorting {len(youtube_results)} results by artist affinity and duration")
+        logging.info(f"Sorting {len(youtube_results)} results by artist affinity and duration (DJ Priority: {dj_priority})")
         target_duration = spotify_info.get('duration_seconds')
         target_title = spotify_info.get('title', '').lower()
 
@@ -120,8 +121,11 @@ class YouTubeExtractor:
         target_artists = [a.strip().lower() for a in spotify_info.get('artist', '').split(',')]
         logging.info(f"Target artists: {target_artists}")
 
+        # Keywords for DJ versions
+        mix_keywords = ["extended mix", "original mix", "club mix"]
+
         for result in youtube_results:
-            # Duration difference
+            # Duration difference - default calculation
             if result.get('duration_seconds') is not None and target_duration is not None:
                 result['duration_difference'] = abs(result['duration_seconds'] - target_duration)
             else:
@@ -133,6 +137,27 @@ class YouTubeExtractor:
             # Title matching
             result['exact_title_match'] = yt_title == target_title
             result['title_affinity'] = difflib.SequenceMatcher(None, yt_title, target_title).ratio()
+            
+            # DJ Priority Check
+            result['has_mix_keyword'] = False
+            if dj_priority:
+                result['has_mix_keyword'] = any(keyword in yt_title for keyword in mix_keywords)
+                
+                # If DJ Priority is on, we prefer longer versions (Extended Mixes)
+                # If video is longer than target (but not absurdly longer), we give it a bonus
+                if result.get('duration_seconds') is not None and target_duration is not None:
+                    diff = result['duration_seconds'] - target_duration
+                    # If video is longer (up to 5 mins longer), it's good for DJing
+                    if 0 <= diff <= 300:
+                        # Perfect length match for extended mix
+                        result['duration_difference'] = 0 
+                    elif diff > 300:
+                        # Too long (maybe a full set), penalize slightly less than being shorter
+                        result['duration_difference'] = diff * 0.5
+                    else:
+                        # Shorter than original? Bad for DJing (radio edits)
+                        # Penalize more
+                        result['duration_difference'] = abs(diff) * 2
 
             # Artist/Channel matching - check each artist
             channel_exact_matches = []
@@ -157,12 +182,14 @@ class YouTubeExtractor:
 
         # Sorting: 
         # 1. Exact channel match first (most important)
-        # 2. Then duration difference
-        # 3. Then channel affinity
-        # 4. Then title matching
+        # 2. Mix priority (Extended/Original/Club) - ONLY IF ENABLED
+        # 3. Then duration difference
+        # 4. Then channel affinity
+        # 5. Then title matching
         youtube_results.sort(
             key=lambda x: (
                 not x['exact_channel_match'],        # False first (exact matches)
+                not x['has_mix_keyword'],            # False first (has mix keyword) -> Higher priority
                 x['duration_difference'],            # Lower difference first  
                 -x['channel_affinity'],              # Higher affinity first
                 not x['exact_title_match'],          # False first (exact titles)

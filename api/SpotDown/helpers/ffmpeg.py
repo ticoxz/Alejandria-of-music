@@ -57,24 +57,32 @@ def convert_to_jpg_with_ffmpeg(input_data: bytes, output_path) -> bool:
 
 def add_cover_art(audio_path, cover_path) -> bool:
     """
-    Embed cover art into MP3 file using ffmpeg
+    Embed cover art into audio file using ffmpeg
     """
     try:
-        temp_output = str(audio_path).replace(".mp3", "_temp.mp3")
+        from pathlib import Path
+        audio_path_obj = Path(audio_path)
+        ext = audio_path_obj.suffix
+        temp_output = str(audio_path_obj.with_name(f"{audio_path_obj.stem}_temp{ext}"))
         
         ffmpeg_cmd = [
             str(file_utils.ffmpeg_path),
             '-i', str(audio_path),
             '-i', str(cover_path),
-            '-map', '0:0',
+            '-map', '0:a',
             '-map', '1:0',
             '-c', 'copy',
-            '-id3v2_version', '3',
             '-metadata:s:v', 'title="Album cover"',
             '-metadata:s:v', 'comment="Cover (front)"',
+            '-disposition:v', 'attached_pic', 
             '-y',
             temp_output
         ]
+        
+        # Add ID3 version only for MP3
+        if ext.lower() == '.mp3':
+            ffmpeg_cmd.insert(5, '-id3v2_version')
+            ffmpeg_cmd.insert(6, '3')
         
         process = subprocess.run(
             ffmpeg_cmd,
@@ -95,5 +103,7 @@ def add_cover_art(audio_path, cover_path) -> bool:
             return False
             
     except Exception as e:
+        from rich.console import Console
+        Console().print(f"[red]Error embedding cover art: {e}[/red]")
         logging.error(f"Error embedding cover art: {e}")
         return False

@@ -179,7 +179,7 @@ class SpotifyExtractor:
                             "artist": ', '.join(artists),
                             "album": album['name'],
                             "added_at": None,
-                            "cover_art": cover_url,
+                            "cover_url": cover_url,
                             "duration_ms": duration_ms,
                             "duration_seconds": duration_seconds,
                             "play_count": None
@@ -259,7 +259,7 @@ class SpotifyExtractor:
                             "artist": ', '.join(artists),
                             "album": album['name'],
                             "added_at": None,
-                            "cover_art": album['images'][0]['url'] if album['images'] else None,
+                            "cover_url": album['images'][0]['url'] if album['images'] else None,
                             "duration_ms": duration_ms,
                             "duration_seconds": duration_seconds,
                             "play_count": None

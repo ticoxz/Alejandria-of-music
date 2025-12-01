@@ -5,6 +5,7 @@
   --foreground: #171717;
   --neon-pink: #FF10F0;
   --neon-purple: #7928CA;
+  --neon-glow-rgb: 255, 16, 240;
 }
 
 @theme inline {
@@ -27,15 +28,18 @@
 .dark {
   --background: #0a0a0a;
   --foreground: #ededed;
+  --neon-pink: #FF10F0;
+  --neon-glow-rgb: 255, 16, 240;
 }
 
 .light {
   --background: #f0f0f0;
   --foreground: #171717;
-  --neon-pink: #D600C4;
-  /* Darker pink for contrast */
+  --neon-pink: #00A3FF;
+  /* Blue for light mode */
   --neon-purple: #5B1D99;
   /* Darker purple for contrast */
+  --neon-glow-rgb: 0, 163, 255;
 }
 
 body {
@@ -68,11 +72,11 @@ body {
 
   0%,
   100% {
-    text-shadow: 0 0 10px rgba(255, 16, 240, 0.5), 0 0 20px rgba(255, 16, 240, 0.3);
+    text-shadow: 0 0 10px rgba(var(--neon-glow-rgb), 0.5), 0 0 20px rgba(var(--neon-glow-rgb), 0.3);
   }
 
   50% {
-    text-shadow: 0 0 20px rgba(255, 16, 240, 0.8), 0 0 30px rgba(255, 16, 240, 0.5), 0 0 40px rgba(255, 16, 240, 0.3);
+    text-shadow: 0 0 20px rgba(var(--neon-glow-rgb), 0.8), 0 0 30px rgba(var(--neon-glow-rgb), 0.5), 0 0 40px rgba(var(--neon-glow-rgb), 0.3);
   }
 }
 

@@ -1,253 +1,353 @@
 import sys
 import os
-import uuid
-from typing import Optional, List, Dict
-from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-import logging
-from dotenv import load_dotenv
+import traceback
 
-# Añadir el directorio actual al path para poder importar SpotDown
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Global crash handler wrapper
+try:
+    import uuid
+    from typing import Optional, List, Dict
+    from pydantic import BaseModel
+    from fastapi import FastAPI, HTTPException, BackgroundTasks
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+    import logging
+    from dotenv import load_dotenv
 
-from SpotDown.extractor.spotify_extractor import SpotifyExtractor
-from SpotDown.main import search_on_youtube, download_track
-from SpotDown.utils.console_utils import ConsoleUtils
-from SpotDown.utils.os import file_utils
-from SpotDown.utils.text_parser import parse_tracklist
-import SpotDown
+    # Añadir el directorio actual al path para poder importar SpotDown
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Configure logging
-log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_path),
-        logging.StreamHandler()
-    ]
-)
+    from SpotDown.extractor.spotify_extractor import SpotifyExtractor
+    from SpotDown.main import search_on_youtube, download_track
+    from SpotDown.utils.console_utils import ConsoleUtils
+    from SpotDown.utils.os import file_utils
+    from SpotDown.utils.text_parser import parse_tracklist
+    import SpotDown
+    import yt_dlp
 
-# Initialize system paths (ffmpeg, etc)
-file_utils.get_system_summary()
+    # Configure logging
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_path),
+            logging.StreamHandler()
+        ]
+    )
 
-load_dotenv()
+    # Initialize system paths (ffmpeg, etc)
+    file_utils.get_system_summary()
 
-app = FastAPI(title="SpotDown API")
+    load_dotenv()
 
-# Configurar CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app = FastAPI(title="SpotDown API")
 
-# Global dictionary to store download progress
-download_progress: Dict[str, Dict] = {}
+    # Configurar CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-class SpotifyUrl(BaseModel):
-    url: str
+    # Global dictionary to store download progress
+    download_progress: Dict[str, Dict] = {}
 
-class DownloadRequest(BaseModel):
-    spotify_url: Optional[str] = None
-    quality: str = "320K"
-    tracklist_mode: bool = False
-    tracks: Optional[List[Dict]] = None
+    class SpotifyUrl(BaseModel):
+        url: str
 
-class TracklistRequest(BaseModel):
-    text: str
+    class DownloadRequest(BaseModel):
+        spotify_url: Optional[str] = None
+        quality: str = "320K"
+        tracklist_mode: bool = False
+        tracks: Optional[List[Dict]] = None
+        djPriority: bool = False
 
-class Settings(BaseModel):
-    client_id: str
-    client_secret: str
-    download_path: Optional[str] = None
+    class TracklistRequest(BaseModel):
+        text: str
 
-@app.get("/api/settings")
-def get_settings():
-    """Obtiene la configuración actual"""
-    return {
-        "client_id": os.getenv("SPOTIPY_CLIENT_ID", ""),
-        "client_secret": os.getenv("SPOTIPY_CLIENT_SECRET", ""),
-        "download_path": os.getenv("DOWNLOAD_PATH", "")
-    }
+    class Settings(BaseModel):
+        client_id: str
+        client_secret: str
+        download_path: Optional[str] = None
 
-@app.get("/")
-def read_root():
-    return {"message": "SpotDown API v2 (Multi-platform)"}
+    class CreateFolderRequest(BaseModel):
+        path: str
+        name: str
 
-import yt_dlp
+    @app.get("/api/settings")
+    def get_settings():
+        """Obtiene la configuración actual"""
+        return {
+            "client_id": os.getenv("SPOTIPY_CLIENT_ID", ""),
+            "client_secret": os.getenv("SPOTIPY_CLIENT_SECRET", ""),
+            "download_path": os.getenv("DOWNLOAD_PATH", "")
+        }
 
-@app.post("/api/info")
-def get_spotify_info(data: SpotifyUrl):
-    """
-    Obtiene información de una URL (Spotify, YouTube, SoundCloud, etc).
-    """
-    url = data.url
-    console = ConsoleUtils()
-    
-    # Check if it's a Spotify URL
-    if "spotify.com" in url:
-        # Determinar tipo de URL (básico)
-        if "track" in url:
-            try:
-                with SpotifyExtractor() as extractor:
-                    info = extractor.extract_track_info(url)
-                    if info:
-                        return {"type": "track", "data": info}
-                    else:
-                        raise HTTPException(status_code=404, detail="No se pudo encontrar información de la canción")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
-                
-        elif "playlist" in url:
-            try:
-                with SpotifyExtractor() as extractor:
-                    playlist_data = extractor.extract_playlist_tracks(url)
-                    if playlist_data and playlist_data.get('tracks'):
-                        return {"type": "playlist", "data": playlist_data, "count": len(playlist_data['tracks'])}
-                    else:
-                        raise HTTPException(status_code=404, detail="No se encontraron canciones en la playlist")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+    @app.post("/api/settings")
+    def save_settings(settings: Settings):
+        """Guarda las credenciales en el archivo .env"""
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
         
-        elif "album" in url:
-            try:
-                with SpotifyExtractor() as extractor:
-                    album_data = extractor.extract_album_tracks(url)
-                    if album_data and album_data.get('tracks'):
-                        return {"type": "playlist", "data": album_data, "count": len(album_data['tracks'])}
-                    else:
-                        raise HTTPException(status_code=404, detail="No se encontraron canciones en el álbum")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+        with open(env_path, "w") as f:
+            f.write(f"SPOTIPY_CLIENT_ID={settings.client_id}\n")
+            f.write(f"SPOTIPY_CLIENT_SECRET={settings.client_secret}\n")
+            if settings.download_path:
+                f.write(f"DOWNLOAD_PATH={settings.download_path}\n")
+        
+        # Actualizar variables de entorno en memoria para efecto inmediato (parcial)
+        os.environ["SPOTIPY_CLIENT_ID"] = settings.client_id
+        os.environ["SPOTIPY_CLIENT_SECRET"] = settings.client_secret
+        if settings.download_path:
+            os.environ["DOWNLOAD_PATH"] = settings.download_path
+        
+        return {"status": "saved"}
+
+    @app.post("/api/info")
+    def get_spotify_info(data: SpotifyUrl):
+        """
+        Obtiene información de una URL (Spotify, YouTube, SoundCloud, etc).
+        """
+        url = data.url
+        console = ConsoleUtils()
+        
+        # Check if it's a Spotify URL
+        if "spotify.com" in url:
+            # Determinar tipo de URL (básico)
+            if "track" in url:
+                try:
+                    with SpotifyExtractor() as extractor:
+                        info = extractor.extract_track_info(url)
+                        if info:
+                            return {"type": "track", "data": info}
+                        else:
+                            raise HTTPException(status_code=404, detail="Track not found")
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+            elif "playlist" in url:
+                try:
+                    with SpotifyExtractor() as extractor:
+                        playlist_data = extractor.extract_playlist_tracks(url)
+                        if playlist_data and playlist_data.get('tracks'):
+                            return {"type": "playlist", "data": playlist_data, "count": len(playlist_data['tracks'])}
+                        else:
+                            raise HTTPException(status_code=404, detail="No se encontraron canciones en la playlist")
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
+            
+            elif "album" in url:
+                try:
+                    with SpotifyExtractor() as extractor:
+                        album_data = extractor.extract_album_tracks(url)
+                        if album_data and album_data.get('tracks'):
+                            return {"type": "playlist", "data": album_data, "count": len(album_data['tracks'])}
+                        else:
+                            raise HTTPException(status_code=404, detail="No se encontraron canciones en el álbum")
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
+            else:
+                 raise HTTPException(status_code=400, detail="Unsupported Spotify URL type")
+        
         else:
-             raise HTTPException(status_code=400, detail="URL de Spotify no soportada.")
-    
-    else:
-        # Assume it's YouTube/SoundCloud/Other supported by yt-dlp
-        try:
-            import os
-            ffmpeg_dir = os.path.dirname(file_utils.ffmpeg_path) if file_utils.ffmpeg_path else None
-            ydl_opts = {
-                'quiet': True,
-                'ffmpeg_location': ffmpeg_dir,
-                'extract_flat': 'in_playlist' # Extract playlist entries without downloading
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                if 'entries' in info:
-                    # It's a playlist
-                    tracks = []
-                    for entry in info['entries']:
-                        if not entry: continue
-                        tracks.append({
-                            "title": entry.get('title'),
-                            "artist": entry.get('uploader') or entry.get('artist') or entry.get('channel') or "Unknown",
-                            "album": entry.get('album') or info.get('title') or "Unknown Album",
-                            "duration_seconds": entry.get('duration'),
-                            "cover_url": entry.get('thumbnail'),
-                            "url": entry.get('url') or entry.get('webpage_url'),
-                            "original_url": entry.get('url') or entry.get('webpage_url')
-                        })
+            # Assume it's YouTube/SoundCloud/Other supported by yt-dlp
+            try:
+                import os
+                ffmpeg_dir = os.path.dirname(file_utils.ffmpeg_path) if file_utils.ffmpeg_path else None
+                ydl_opts = {
+                    'quiet': True,
+                    'ffmpeg_location': ffmpeg_dir,
+                    'extract_flat': 'in_playlist' # Extract playlist entries without downloading
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
                     
-                    playlist_data = {
-                        "title": info.get('title'),
-                        "cover_url": info.get('thumbnail'),
-                        "url": url,
-                        "tracks": tracks
-                    }
-                    return {"type": "playlist", "data": playlist_data, "count": len(tracks)}
-                
-                else:
-                    # It's a single track
-                    track_info = {
-                        "title": info.get('title'),
-                        "artist": info.get('uploader') or info.get('artist') or info.get('channel') or "Unknown",
-                        "album": info.get('album') or "Single",
-                        "duration_seconds": info.get('duration'),
-                        "cover_url": info.get('thumbnail'),
-                        "url": url,
-                        "original_url": url
-                    }
-                    return {"type": "track", "data": track_info}
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Error al procesar URL: {str(e)}")
+                    if 'entries' in info:
+                        # It's a playlist
+                        tracks = []
+                        for entry in info['entries']:
+                            if not entry: continue
+                            tracks.append({
+                                "title": entry.get('title'),
+                                "artist": entry.get('uploader') or entry.get('artist') or entry.get('channel') or "Unknown",
+                                "album": entry.get('album') or info.get('title') or "Unknown Album",
+                                "duration_seconds": entry.get('duration'),
+                                "cover_url": entry.get('thumbnail'),
+                                "url": entry.get('url') or entry.get('webpage_url'),
+                                "original_url": entry.get('url') or entry.get('webpage_url')
+                            })
+                        
+                        playlist_data = {
+                            "title": info.get('title'),
+                            "cover_url": info.get('thumbnail'),
+                            "url": url,
+                            "tracks": tracks
+                        }
+                        return {"type": "playlist", "data": playlist_data, "count": len(tracks)}
+                    
+                    else:
+                        # It's a single track
+                        track_info = {
+                            "title": info.get('title'),
+                            "artist": info.get('uploader') or info.get('artist') or info.get('channel') or "Unknown",
+                            "album": info.get('album') or "Single",
+                            "duration_seconds": info.get('duration'),
+                            "cover_url": info.get('thumbnail'),
+                            "url": url,
+                            "original_url": url
+                        }
+                        return {"type": "track", "data": track_info}
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error al procesar URL: {str(e)}")
 
-
-@app.post("/api/parse_tracklist")
-def parse_tracklist_endpoint(request: TracklistRequest):
-    """Parses a text tracklist and returns structured data"""
-    try:
+    @app.post("/api/parse_tracklist")
+    def api_parse_tracklist(request: TracklistRequest):
         tracks = parse_tracklist(request.text)
         return {"tracks": tracks, "count": len(tracks)}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/api/download")
-async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks):
-    """
-    Inicia la descarga de una canción, playlist o álbum.
-    Retorna un task_id para trackear el progreso.
-    """
-    url = data.spotify_url
-    quality = data.quality
-    
-    # Generar ID de tarea único
-    task_id = str(uuid.uuid4())
-    
-    # --- Helper for batch download ---
-    def batch_download_wrapper(tracks, quality, task_id, subdirectory=None):
-        total = len(tracks)
-        success_count = 0
+    @app.post("/api/download")
+    async def start_download(request: DownloadRequest, background_tasks: BackgroundTasks):
+        task_id = str(uuid.uuid4())
         
-        for i, track in enumerate(tracks):
-            try:
-                # Update progress for current track
-                download_progress[task_id]["current_track"] = i + 1
-                download_progress[task_id]["status"] = "downloading"
-                download_progress[task_id]["filename"] = f"{track.get('artist', 'Unknown')} - {track.get('title', 'Unknown')}"
-                download_progress[task_id]["percent"] = 0 # Reset for new track
-                
-                # Determine if we need to search on YouTube or if we have a direct URL
-                direct_url = track.get('url') or track.get('original_url')
-                is_spotify_track = "spotify.com" in (direct_url or "")
-                
-                video_info_to_download = None
-                
-                # If it's a manual tracklist item (no URL) or Spotify, we search
-                if not direct_url or is_spotify_track or ("youtube" not in direct_url and "soundcloud" not in direct_url):
-                     # Search on YouTube logic
-                     query = f"{track['artist']} {track['title']}"
-                     # Adapt track dict keys if needed
-                     # Ensure cover_url is present for the downloader
-                     track['cover_url'] = track.get('cover_art') or track.get('cover_url')
-                     
-                     youtube_results = search_on_youtube(query, track)
-                     if youtube_results:
-                         best_match = youtube_results[0]
-                         video_info_to_download = best_match
-                         # Get cover art from YouTube thumbnail
-                         if not track.get('cover_url') and best_match.get('thumbnail'):
-                             track['cover_url'] = best_match.get('thumbnail')
-                     else:
-                         continue
-                else:
-                    # Generic playlist track (SoundCloud/YouTube) - Direct Download
-                    # We construct a video_info dict from the track info
-                    video_info_to_download = {
-                        'url': direct_url,
-                        'title': track.get('title'),
-                        'uploader': track.get('artist'),
-                        'webpage_url': direct_url
-                    }
+        # --- Helper for batch download ---
+        def batch_download_wrapper(tracks, quality, task_id, dj_priority=False, subdirectory=None):
+            total = len(tracks)
+            success_count = 0
+            
+            for i, track in enumerate(tracks):
+                try:
+                    # Update progress for current track
+                    download_progress[task_id]["current_track"] = i + 1
+                    download_progress[task_id]["status"] = "downloading"
+                    download_progress[task_id]["filename"] = f"{track.get('artist', 'Unknown')} - {track.get('title', 'Unknown')}"
+                    download_progress[task_id]["percent"] = 0 # Reset for new track
+                    
+                    # Determine if we need to search on YouTube or if we have a direct URL
+                    direct_url = track.get('url') or track.get('original_url')
+                    is_spotify_track = "spotify.com" in (direct_url or "")
+                    
+                    video_info_to_download = None
+                    
+                    # If it's a manual tracklist item (no URL) or Spotify, we search
+                    if not direct_url or is_spotify_track or ("youtube" not in direct_url and "soundcloud" not in direct_url):
+                         # Search on YouTube logic
+                         query = f"{track['artist']} {track['title']}"
+                         # Adapt track dict keys if needed
+                         # Ensure cover_url is present for the downloader
+                         track['cover_url'] = track.get('cover_art') or track.get('cover_url')
+                         
+                         youtube_results = search_on_youtube(query, track, dj_priority)
+                         if youtube_results:
+                             best_match = youtube_results[0]
+                             video_info_to_download = best_match
+                             # Get cover art from YouTube thumbnail
+                             if not track.get('cover_url') and best_match.get('thumbnail'):
+                                 track['cover_url'] = best_match.get('thumbnail')
+                         else:
+                             continue
+                    else:
+                        # Generic playlist track (SoundCloud/YouTube) - Direct Download
+                        # We construct a video_info dict from the track info
+                        video_info_to_download = {
+                            'url': direct_url,
+                            'title': track.get('title'),
+                            'uploader': track.get('artist'),
+                            'webpage_url': direct_url
+                        }
 
-                if video_info_to_download:
-                    # Define a per-track progress hook
-                    def track_hook(d):
+                    if video_info_to_download:
+                        # Define a per-track progress hook
+                        def track_hook(d):
+                            if d['status'] == 'downloading':
+                                try:
+                                    p = 0
+                                    if d.get('total_bytes'):
+                                        p = d['downloaded_bytes'] / d['total_bytes'] * 100
+                                    elif d.get('total_bytes_estimate'):
+                                        p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
+                                    else:
+                                        import re
+                                        p_str = d.get('_percent_str', '0%').replace('%','')
+                                        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                                        p_str = ansi_escape.sub('', p_str)
+                                        p = float(p_str)
+                                    
+                                    # Update global progress (we could average it, but for now just show current track percent)
+                                    download_progress[task_id]["percent"] = p
+                                except Exception:
+                                    pass
+                            elif d['status'] == 'finished':
+                                download_progress[task_id]["percent"] = 100
+
+                        # Download
+                        # Ensure spotify_info (track) has cover_url
+                        if download_track(video_info_to_download, track, quality, track_hook, overwrite=True, subdirectory=subdirectory):
+                            success_count += 1
+                except Exception as e:
+                    print(f"Error downloading {track.get('title')}: {e}")
+                    download_progress[task_id]["error"] = str(e)
+                    # Continue to next track
+            
+            # Finish task
+            download_progress[task_id]["status"] = "completed"
+            download_progress[task_id]["percent"] = 100
+            download_progress[task_id]["message"] = f"Descarga completada. {success_count}/{total} canciones descargadas."
+
+        # --- Main Download Logic ---
+        
+        # Check if it's a manual tracklist download
+        if request.tracklist_mode and request.tracks:
+            # Initialize progress
+            download_progress[task_id] = {
+                "status": "starting",
+                "percent": 0,
+                "filename": "Tracklist Download",
+                "total_tracks": len(request.tracks),
+                "current_track": 0
+            }
+            
+            background_tasks.add_task(batch_download_wrapper, request.tracks, request.quality, task_id, request.djPriority)
+            
+            return {
+                "status": "started",
+                "task_id": task_id,
+                "message": f"Iniciando descarga de {len(request.tracks)} canciones..."
+            }
+
+        url = request.spotify_url
+        quality = request.quality
+        dj_priority = request.djPriority
+
+        if "spotify.com" in url:
+            if "track" in url:
+                # --- Single Track Logic (Spotify) ---
+                try:
+                    with SpotifyExtractor() as extractor:
+                        spotify_info = extractor.extract_track_info(url)
+                    
+                    if not spotify_info:
+                        raise HTTPException(status_code=404, detail="No se pudo obtener info de Spotify")
+                    
+                    # Buscar en YouTube
+                    query = f"{spotify_info['artist']} {spotify_info['title']}"
+                    youtube_results = search_on_youtube(query, spotify_info, dj_priority)
+                    
+                    if not youtube_results:
+                        raise HTTPException(status_code=404, detail="No se encontraron resultados en YouTube")
+                    
+                    best_match = youtube_results[0]
+                    video_info = best_match
+                    
+                    # Inicializar progreso
+                    download_progress[task_id] = {
+                        "status": "starting",
+                        "percent": 0,
+                        "filename": f"{spotify_info['artist']} - {spotify_info['title']}"
+                    }
+                    
+                    # Define hook
+                    def progress_hook(d):
                         if d['status'] == 'downloading':
                             try:
                                 p = 0
@@ -262,375 +362,332 @@ async def download_song(data: DownloadRequest, background_tasks: BackgroundTasks
                                     p_str = ansi_escape.sub('', p_str)
                                     p = float(p_str)
                                 
-                                # Update global progress (we could average it, but for now just show current track percent)
                                 download_progress[task_id]["percent"] = p
+                                download_progress[task_id]["status"] = "downloading"
                             except Exception:
                                 pass
                         elif d['status'] == 'finished':
                             download_progress[task_id]["percent"] = 100
-
-                    # Download
-                    # Download
-                    # Ensure spotify_info (track) has cover_url
-                    if download_track(video_info_to_download, track, quality, track_hook, overwrite=True, subdirectory=subdirectory):
-                        success_count += 1
-            except Exception as e:
-                print(f"Error downloading {track.get('title')}: {e}")
-                download_progress[task_id]["error"] = str(e)
-                # Continue to next track
-        
-        # Finish task
-        download_progress[task_id]["status"] = "completed"
-        download_progress[task_id]["percent"] = 100
-        download_progress[task_id]["message"] = f"Descarga completada. {success_count}/{total} canciones descargadas."
-
-    # --- Main Download Logic ---
-    
-    # Check if it's a manual tracklist download
-    if data.tracklist_mode and data.tracks:
-        # Initialize progress
-        download_progress[task_id] = {
-            "status": "starting",
-            "percent": 0,
-            "filename": "Tracklist Download",
-            "total_tracks": len(data.tracks),
-            "current_track": 0
-        }
-        
-        background_tasks.add_task(batch_download_wrapper, data.tracks, quality, task_id)
-        
-        return {
-            "status": "started",
-            "task_id": task_id,
-            "message": f"Iniciando descarga de {len(data.tracks)} canciones..."
-        }
-
-    if "spotify.com" in url:
-        if "track" in url:
-            # --- Single Track Logic (Spotify) ---
-            try:
-                with SpotifyExtractor() as extractor:
-                    spotify_info = extractor.extract_track_info(url)
-                
-                if not spotify_info:
-                    raise HTTPException(status_code=404, detail="No se pudo obtener info de Spotify")
-                
-                # Buscar en YouTube
-                query = f"{spotify_info['artist']} {spotify_info['title']}"
-                youtube_results = search_on_youtube(query, spotify_info)
-                
-                if not youtube_results:
-                    raise HTTPException(status_code=404, detail="No se encontraron resultados en YouTube")
-                
-                best_match = youtube_results[0]
-                video_info = best_match
-                
-                # Inicializar progreso
-                download_progress[task_id] = {
-                    "status": "starting",
-                    "percent": 0,
-                    "filename": f"{spotify_info['artist']} - {spotify_info['title']}"
-                }
-                
-                # Define hook
-                def progress_hook(d):
-                    if d['status'] == 'downloading':
+                            download_progress[task_id]["status"] = "processing"
+                    
+                    # Wrapper
+                    def download_wrapper(video_info, spotify_info, quality, hook):
                         try:
-                            p = 0
-                            if d.get('total_bytes'):
-                                p = d['downloaded_bytes'] / d['total_bytes'] * 100
-                            elif d.get('total_bytes_estimate'):
-                                p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
+                            success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
+                            if success:
+                                download_progress[task_id]["status"] = "completed"
+                                download_progress[task_id]["percent"] = 100
                             else:
-                                import re
-                                p_str = d.get('_percent_str', '0%').replace('%','')
-                                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-                                p_str = ansi_escape.sub('', p_str)
-                                p = float(p_str)
-                            
-                            download_progress[task_id]["percent"] = p
-                            download_progress[task_id]["status"] = "downloading"
-                        except Exception:
-                            pass
-                    elif d['status'] == 'finished':
-                        download_progress[task_id]["percent"] = 100
-                        download_progress[task_id]["status"] = "processing"
-                
-                # Wrapper
-                def download_wrapper(video_info, spotify_info, quality, hook):
-                    try:
-                        success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
-                        if success:
-                            download_progress[task_id]["status"] = "completed"
-                            download_progress[task_id]["percent"] = 100
-                        else:
+                                download_progress[task_id]["status"] = "error"
+                        except Exception as e:
                             download_progress[task_id]["status"] = "error"
-                    except Exception as e:
-                        download_progress[task_id]["status"] = "error"
-                        download_progress[task_id]["error"] = str(e)
+                            download_progress[task_id]["error"] = str(e)
 
-                background_tasks.add_task(download_wrapper, video_info, spotify_info, quality, progress_hook)
-                
-                return {
-                    "status": "started", 
-                    "task_id": task_id,
-                    "message": f"Descargando {spotify_info['title']}..."
-                }
-            except Exception as e:
-                 raise HTTPException(status_code=500, detail=str(e))
+                    background_tasks.add_task(download_wrapper, video_info, spotify_info, quality, progress_hook)
+                    
+                    return {
+                        "status": "started", 
+                        "task_id": task_id,
+                        "message": f"Descargando {spotify_info['title']}..."
+                    }
+                except Exception as e:
+                     raise HTTPException(status_code=500, detail=str(e))
 
-        elif "playlist" in url or "album" in url:
-            # --- Playlist/Album Logic (Spotify) ---
+            elif "playlist" in url or "album" in url:
+                # --- Playlist/Album Logic (Spotify) ---
+                try:
+                    with SpotifyExtractor() as extractor:
+                        if "playlist" in url:
+                            collection_data = extractor.extract_playlist_tracks(url)
+                            collection_type = "Playlist"
+                        else:
+                            collection_data = extractor.extract_album_tracks(url)
+                            collection_type = "Álbum"
+                    
+                    tracks = collection_data.get('tracks', [])
+                    if not tracks:
+                        raise HTTPException(status_code=404, detail=f"No se encontraron canciones en {collection_type}")
+                    
+                    # Inicializar progreso
+                    download_progress[task_id] = {
+                        "status": "starting",
+                        "percent": 0,
+                        "filename": f"{collection_type}: {collection_data.get('title', 'Unknown')}",
+                        "total_tracks": len(tracks),
+                        "current_track": 0
+                    }
+
+                    background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, dj_priority, subdirectory=collection_data.get('title', 'Playlist'))
+                    
+                    return {
+                        "status": "started", 
+                        "task_id": task_id,
+                        "message": f"Iniciando descarga de {len(tracks)} canciones..."
+                    }
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
+
+        else:
+            # Assume it's YouTube/SoundCloud/Other supported by yt-dlp
             try:
-                with SpotifyExtractor() as extractor:
-                    if "playlist" in url:
-                        collection_data = extractor.extract_playlist_tracks(url)
-                        collection_type = "Playlist"
-                    else:
-                        collection_data = extractor.extract_album_tracks(url)
-                        collection_type = "Álbum"
-                
-                tracks = collection_data.get('tracks', [])
-                if not tracks:
-                    raise HTTPException(status_code=404, detail=f"No se encontraron canciones en {collection_type}")
-                
-                # Inicializar progreso
-                download_progress[task_id] = {
-                    "status": "starting",
-                    "percent": 0,
-                    "filename": f"{collection_type}: {collection_data.get('title', 'Unknown')}",
-                    "total_tracks": len(tracks),
-                    "current_track": 0
+                import os
+                ffmpeg_dir = os.path.dirname(file_utils.ffmpeg_path) if file_utils.ffmpeg_path else None
+                ydl_opts = {
+                    'quiet': True,
+                    'ffmpeg_location': ffmpeg_dir,
+                    'extract_flat': 'in_playlist'
                 }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                
+                if 'entries' in info:
+                    # --- Generic Playlist ---
+                    tracks = []
+                    for entry in info['entries']:
+                        if not entry: continue
+                        tracks.append({
+                            "title": entry.get('title'),
+                            "artist": entry.get('uploader') or entry.get('artist') or "Unknown",
+                            "album": entry.get('album') or info.get('title') or "Unknown Album",
+                            "percent": 0,
+                            "filename": f"{entry.get('uploader', 'Unknown')} - {entry.get('title', 'Unknown')}"
+                        })
+                    
+                    # Definir hook de progreso
+                    def progress_hook(d):
+                        if d['status'] == 'downloading':
+                            try:
+                                p = 0
+                                if d.get('total_bytes'):
+                                    p = d['downloaded_bytes'] / d['total_bytes'] * 100
+                                elif d.get('total_bytes_estimate'):
+                                    p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
+                                else:
+                                    import re
+                                    p_str = d.get('_percent_str', '0%').replace('%','')
+                                    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                                    p_str = ansi_escape.sub('', p_str)
+                                    p = float(p_str)
+                                
+                                download_progress[task_id]["percent"] = p
+                                download_progress[task_id]["status"] = "downloading"
+                            except Exception as e:
+                                print(f"Error in progress hook: {e}")
+                        elif d['status'] == 'finished':
+                            download_progress[task_id]["percent"] = 100
+                            download_progress[task_id]["status"] = "processing"
+                    
+                    # Wrapper
+                    def download_wrapper(video_info, spotify_info, quality, hook):
+                        try:
+                            success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
+                            if success:
+                                download_progress[task_id]["status"] = "completed"
+                                download_progress[task_id]["percent"] = 100
+                            else:
+                                download_progress[task_id]["status"] = "error"
+                        except Exception as e:
+                            download_progress[task_id]["status"] = "error"
+                            download_progress[task_id]["error"] = str(e)
 
-                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, subdirectory=collection_data.get('title', 'Playlist'))
+                    # Ejecutar descarga en background
+                    background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, subdirectory=info.get('title', 'Playlist'))
+                    
+                    response = {
+                        "status": "started", 
+                        "task_id": task_id,
+                        "message": f"Descargando playlist de {len(tracks)} canciones..."
+                    }
+                    return response
+
+                else:
+                    # --- Generic Single Video ---
+                    video_info = info
+                    # Ensure 'url' key exists for the downloader
+                    if 'url' not in video_info:
+                        video_info['url'] = info.get('webpage_url') or url
+                    spotify_info = {
+                        "title": info.get('title'),
+                        "artist": info.get('uploader') or info.get('artist') or "Unknown",
+                        "album": info.get('album') or "Single",
+                        "cover_url": info.get('thumbnail'),
+                        "url": url
+                    }
+
+                    # Inicializar progreso
+                    download_progress[task_id] = {
+                        "status": "starting",
+                        "percent": 0,
+                        "filename": f"{spotify_info['artist']} - {spotify_info['title']}"
+                    }
+
+                    # Define hook
+                    def progress_hook(d):
+                        if d['status'] == 'downloading':
+                            try:
+                                p = 0
+                                if d.get('total_bytes'):
+                                    p = d['downloaded_bytes'] / d['total_bytes'] * 100
+                                elif d.get('total_bytes_estimate'):
+                                    p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
+                                else:
+                                    import re
+                                    p_str = d.get('_percent_str', '0%').replace('%','')
+                                    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                                    p_str = ansi_escape.sub('', p_str)
+                                    p = float(p_str)
+                                
+                                download_progress[task_id]["percent"] = p
+                                download_progress[task_id]["status"] = "downloading"
+                            except Exception:
+                                pass
+                        elif d['status'] == 'finished':
+                            download_progress[task_id]["percent"] = 100
+                            download_progress[task_id]["status"] = "processing"
+
+                    # Wrapper
+                    def download_wrapper(video_info, spotify_info, quality, hook):
+                        try:
+                            success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
+                            if success:
+                                download_progress[task_id]["status"] = "completed"
+                                download_progress[task_id]["percent"] = 100
+                            else:
+                                download_progress[task_id]["status"] = "error"
+                        except Exception as e:
+                            download_progress[task_id]["status"] = "error"
+                            download_progress[task_id]["error"] = str(e)
+
+                    background_tasks.add_task(download_wrapper, video_info, spotify_info, quality, progress_hook)
+                    
+                    return {
+                        "status": "started", 
+                        "task_id": task_id,
+                        "message": f"Descargando {spotify_info['title']}..."
+                    }
                 
-                return {
-                    "status": "started", 
-                    "task_id": task_id,
-                    "message": f"Iniciando descarga de {len(tracks)} canciones..."
-                }
             except Exception as e:
+                print(f"DEBUG: Exception in download_song: {e}")
+                import traceback
+                traceback.print_exc()
                 raise HTTPException(status_code=500, detail=str(e))
 
-    else:
-        # Assume it's YouTube/SoundCloud/Other supported by yt-dlp
+    @app.get("/api/progress/{task_id}")
+    def get_progress(task_id: str):
+        return download_progress.get(task_id, {"status": "not_found"})
+
+    @app.get("/api/browse")
+    def browse_directory(path: Optional[str] = None):
+        """Lista directorios en la ruta especificada"""
         try:
-            import os
-            ffmpeg_dir = os.path.dirname(file_utils.ffmpeg_path) if file_utils.ffmpeg_path else None
-            ydl_opts = {
-                'quiet': True,
-                'ffmpeg_location': ffmpeg_dir,
-                'extract_flat': 'in_playlist'
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            if not path:
+                path = os.path.expanduser("~")
             
-            if 'entries' in info:
-                # --- Generic Playlist ---
-                tracks = []
-                for entry in info['entries']:
-                    if not entry: continue
-                    tracks.append({
-                        "title": entry.get('title'),
-                        "artist": entry.get('uploader') or entry.get('artist') or "Unknown",
-                        "album": entry.get('album') or info.get('title') or "Unknown Album",
-                        "percent": 0,
-                        "filename": f"{entry.get('uploader', 'Unknown')} - {entry.get('title', 'Unknown')}"
-                    })
+            # Validar que la ruta existe
+            if not os.path.exists(path):
+                return {"error": "Path does not exist", "current_path": path, "folders": []}
                 
-                # Definir hook de progreso
-                def progress_hook(d):
-                    if d['status'] == 'downloading':
-                        try:
-                            p = 0
-                            if d.get('total_bytes'):
-                                p = d['downloaded_bytes'] / d['total_bytes'] * 100
-                            elif d.get('total_bytes_estimate'):
-                                p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
-                            else:
-                                import re
-                                p_str = d.get('_percent_str', '0%').replace('%','')
-                                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-                                p_str = ansi_escape.sub('', p_str)
-                                p = float(p_str)
-                            
-                            download_progress[task_id]["percent"] = p
-                            download_progress[task_id]["status"] = "downloading"
-                        except Exception as e:
-                            print(f"Error in progress hook: {e}")
-                    elif d['status'] == 'finished':
-                        download_progress[task_id]["percent"] = 100
-                        download_progress[task_id]["status"] = "processing"
-                
-                # Wrapper
-                def download_wrapper(video_info, spotify_info, quality, hook):
-                    try:
-                        success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
-                        if success:
-                            download_progress[task_id]["status"] = "completed"
-                            download_progress[task_id]["percent"] = 100
-                        else:
-                            download_progress[task_id]["status"] = "error"
-                    except Exception as e:
-                        download_progress[task_id]["status"] = "error"
-                        download_progress[task_id]["error"] = str(e)
-
-                # Ejecutar descarga en background
-                background_tasks.add_task(batch_download_wrapper, tracks, quality, task_id, subdirectory=info.get('title', 'Playlist'))
-                
-                response = {
-                    "status": "started", 
-                    "task_id": task_id,
-                    "message": f"Descargando playlist de {len(tracks)} canciones..."
-                }
-                print(f"DEBUG: Returning response: {response}")
-                return response
-
-            else:
-                # --- Generic Single Video ---
-                video_info = info
-                spotify_info = {
-                    "title": info.get('title'),
-                    "artist": info.get('uploader') or info.get('artist') or "Unknown",
-                    "album": info.get('album') or "Single",
-                    "cover_url": info.get('thumbnail'),
-                    "url": url
-                }
-
-                # Inicializar progreso
-                download_progress[task_id] = {
-                    "status": "starting",
-                    "percent": 0,
-                    "filename": f"{spotify_info['artist']} - {spotify_info['title']}"
-                }
-
-                # Define hook
-                def progress_hook(d):
-                    if d['status'] == 'downloading':
-                        try:
-                            p = 0
-                            if d.get('total_bytes'):
-                                p = d['downloaded_bytes'] / d['total_bytes'] * 100
-                            elif d.get('total_bytes_estimate'):
-                                p = d['downloaded_bytes'] / d['total_bytes_estimate'] * 100
-                            else:
-                                import re
-                                p_str = d.get('_percent_str', '0%').replace('%','')
-                                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-                                p_str = ansi_escape.sub('', p_str)
-                                p = float(p_str)
-                            
-                            download_progress[task_id]["percent"] = p
-                            download_progress[task_id]["status"] = "downloading"
-                        except Exception:
-                            pass
-                    elif d['status'] == 'finished':
-                        download_progress[task_id]["percent"] = 100
-                        download_progress[task_id]["status"] = "processing"
-
-                # Wrapper
-                def download_wrapper(video_info, spotify_info, quality, hook):
-                    try:
-                        success = download_track(video_info, spotify_info, quality, hook, overwrite=True)
-                        if success:
-                            download_progress[task_id]["status"] = "completed"
-                            download_progress[task_id]["percent"] = 100
-                        else:
-                            download_progress[task_id]["status"] = "error"
-                    except Exception as e:
-                        download_progress[task_id]["status"] = "error"
-                        download_progress[task_id]["error"] = str(e)
-
-                background_tasks.add_task(download_wrapper, video_info, spotify_info, quality, progress_hook)
-                
-                response = {
-                    "status": "started", 
-                    "task_id": task_id,
-                    "message": f"Descargando {spotify_info['title']}..."
-                }
-                print(f"DEBUG: Returning response: {response}")
-                return response
+            # Listar solo directorios
+            items = os.listdir(path)
+            folders = []
             
+            # Agregar opción para subir de nivel si no estamos en la raíz
+            parent = os.path.dirname(path)
+            if parent and parent != path:
+                folders.append({"name": "..", "path": parent})
+                
+            for item in items:
+                full_path = os.path.join(path, item)
+                if os.path.isdir(full_path) and not item.startswith("."):
+                    folders.append({"name": item, "path": full_path})
+            
+            # Ordenar alfabéticamente
+            folders.sort(key=lambda x: x["name"])
+            
+            return {"current_path": path, "folders": folders}
         except Exception as e:
-            print(f"DEBUG: Exception in download_song: {e}")
-            import traceback
-            traceback.print_exc()
+            return {"error": str(e), "current_path": path, "folders": []}
+
+    @app.post("/api/create_folder")
+    def create_folder(data: CreateFolderRequest):
+        """Crea una nueva carpeta"""
+        try:
+            new_path = os.path.join(data.path, data.name)
+            
+            if os.path.exists(new_path):
+                raise HTTPException(status_code=400, detail="La carpeta ya existe")
+                
+            os.makedirs(new_path)
+            return {"status": "created", "path": new_path}
+        except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/progress/{task_id}")
-def get_progress(task_id: str):
-    return download_progress.get(task_id, {"status": "not_found"})
+    # Mount static files (Frontend)
+    # In production/portable mode, we serve the 'web/out' folder
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        base_dir = sys._MEIPASS
+        static_dir = os.path.join(base_dir, "web", "out")
+    else:
+        # Running as script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        static_dir = os.path.join(base_dir, "..", "web", "out")
 
-@app.post("/api/settings")
-def save_settings(settings: Settings):
-    """Guarda las credenciales en el archivo .env"""
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-    
-    with open(env_path, "w") as f:
-        f.write(f"SPOTIPY_CLIENT_ID={settings.client_id}\n")
-        f.write(f"SPOTIPY_CLIENT_SECRET={settings.client_secret}\n")
-        if settings.download_path:
-            f.write(f"DOWNLOAD_PATH={settings.download_path}\n")
-    
-    # Actualizar variables de entorno en memoria para efecto inmediato (parcial)
-    os.environ["SPOTIPY_CLIENT_ID"] = settings.client_id
-    os.environ["SPOTIPY_CLIENT_SECRET"] = settings.client_secret
-    if settings.download_path:
-        os.environ["DOWNLOAD_PATH"] = settings.download_path
-    
-    return {"status": "saved"}
+    if os.path.exists(static_dir):
+        app.mount("/_next", StaticFiles(directory=os.path.join(static_dir, "_next")), name="next")
+        
+        assets_dir = os.path.join(static_dir, "assets")
+        if os.path.exists(assets_dir):
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+        
+        # Serve other static files (favicon, etc)
+        for file in os.listdir(static_dir):
+            file_path = os.path.join(static_dir, file)
+            if os.path.isfile(file_path) and file != "index.html":
+                @app.get(f"/{file}")
+                async def serve_file(file=file):
+                    return FileResponse(os.path.join(static_dir, file))
 
-@app.get("/api/browse")
-def browse_directory(path: Optional[str] = None):
-    """Lista directorios en la ruta especificada"""
-    try:
-        if not path:
-            path = os.path.expanduser("~")
-        
-        # Validar que la ruta existe
-        if not os.path.exists(path):
-            return {"error": "Path does not exist", "current_path": path, "folders": []}
-            
-        # Listar solo directorios
-        items = os.listdir(path)
-        folders = []
-        
-        # Agregar opción para subir de nivel si no estamos en la raíz
-        parent = os.path.dirname(path)
-        if parent and parent != path:
-            folders.append({"name": "..", "path": parent})
-            
-        for item in items:
-            full_path = os.path.join(path, item)
-            if os.path.isdir(full_path) and not item.startswith("."):
-                folders.append({"name": item, "path": full_path})
-        
-        # Ordenar alfabéticamente
-        folders.sort(key=lambda x: x["name"])
-        
-        return {"current_path": path, "folders": folders}
-    except Exception as e:
-        return {"error": str(e), "current_path": path, "folders": []}
+        @app.get("/{full_path:path}")
+        async def serve_react_app(full_path: str):
+            # API routes are already handled above. This catches everything else.
+            if full_path.startswith("api/"):
+                return {"error": "API route not found"}
+            return FileResponse(os.path.join(static_dir, "index.html"))
+    else:
+        print(f"WARNING: Static directory not found at {static_dir}. Frontend will not be served.")
 
-class CreateFolderRequest(BaseModel):
-    path: str
-    name: str
-
-@app.post("/api/create_folder")
-def create_folder(data: CreateFolderRequest):
-    """Crea una nueva carpeta"""
-    try:
-        new_path = os.path.join(data.path, data.name)
+    if __name__ == "__main__":
+        # Fix for PyInstaller multiprocessing on Windows
+        from multiprocessing import freeze_support
+        freeze_support()
         
-        if os.path.exists(new_path):
-            raise HTTPException(status_code=400, detail="La carpeta ya existe")
-            
-        os.makedirs(new_path)
-        return {"status": "created", "path": new_path}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import uvicorn
+        # In portable mode, we want to open the browser automatically
+        import webbrowser
+        from threading import Timer
+        import traceback
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+        def open_browser():
+            webbrowser.open("http://localhost:8001")
+
+        try:
+            Timer(1.5, open_browser).start()
+            uvicorn.run(app, host="0.0.0.0", port=8001)
+        except Exception as e:
+            # Log crash to file
+            with open("crash.log", "w") as f:
+                f.write(f"Crash detected:\n{str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+            print("Application crashed. See crash.log for details.")
+        finally:
+            print("Application shutdown complete.")
+            input("Press Enter to exit...")
+
+except Exception as e:
+    # Critical error handler for startup crashes
+    with open("crash.log", "w") as f:
+        f.write(f"CRITICAL STARTUP ERROR:\n{str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+    print("CRITICAL ERROR: Application failed to start.")
+    print(f"Error: {e}")
+    print("See crash.log for details.")
+    input("Press Enter to exit...")

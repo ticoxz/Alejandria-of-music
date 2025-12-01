@@ -33,10 +33,10 @@ def extract_spotify_data(spotify_url: str, max_retry: int = 3) -> Optional[Dict]
     return None
 
 
-def search_on_youtube(query: str, spotify_info: Optional[Dict] = None) -> List[Dict]:
+def search_on_youtube(query: str, spotify_info: Optional[Dict] = None, dj_priority: bool = False) -> List[Dict]:
     """Search for videos on YouTube and sort them by relevance"""
     with YouTubeExtractor() as youtube_extractor:
-        return youtube_extractor.search(query, spotify_info)
+        return youtube_extractor.search(query, spotify_info, dj_priority)
 
 
 def download_track(video_info: Dict, spotify_info: Dict, quality: str = "320K", progress_hook: Optional[Callable] = None, overwrite: bool = False, subdirectory: Optional[str] = None) -> bool:
@@ -62,7 +62,7 @@ def download_track(video_info: Dict, spotify_info: Dict, quality: str = "320K", 
     return downloader.download(video_info, spotify_info, quality, progress_hook, subdirectory)
 
 
-def handle_playlist_download(tracks: List[Dict], max_results: int):
+def handle_playlist_download(tracks: List[Dict], max_results: int, dj_priority: bool = False):
     """Handle downloading all tracks from a playlist"""
     for idx, track in enumerate(tracks, 1):
         console.start_message()
@@ -77,7 +77,7 @@ def handle_playlist_download(tracks: List[Dict], max_results: int):
         }
 
         query = f"{spotify_info['artist']} {spotify_info['title']}"
-        youtube_results = search_on_youtube(query, spotify_info)
+        youtube_results = search_on_youtube(query, spotify_info, dj_priority)
 
         if not youtube_results:
             console.show_error(f"No YouTube results for {spotify_info['artist']} - {spotify_info['title']}")
@@ -88,10 +88,10 @@ def handle_playlist_download(tracks: List[Dict], max_results: int):
             console.show_error(f"Error downloading {spotify_info['artist']} - {spotify_info['title']}")
 
 
-def handle_single_track_download(spotify_info: Dict):
+def handle_single_track_download(spotify_info: Dict, dj_priority: bool = False):
     """Handle downloading a single track"""
     query = f"{spotify_info['artist']} {spotify_info['title']}"
-    youtube_results = search_on_youtube(query, spotify_info)
+    youtube_results = search_on_youtube(query, spotify_info, dj_priority)
 
     if not youtube_results:
         console.show_error("No YouTube results found.")

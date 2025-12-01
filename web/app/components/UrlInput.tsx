@@ -44,7 +44,7 @@ export function UrlInput({ onSubmit, isLoading, placeholder }: UrlInputProps) {
                             "absolute right-2 top-2 bottom-2 px-6 rounded-md font-bold transition-all duration-200",
                             isLoading || !url.trim()
                                 ? "bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                                : "bg-neon-pink text-white hover:bg-fuchsia-600 hover:scale-105 shadow-[0_0_15px_rgba(255,16,240,0.5)]"
+                                : "bg-neon-pink text-white hover:bg-opacity-90 hover:scale-105 shadow-[0_0_15px_rgba(var(--neon-glow-rgb),0.5)]"
                         )}
                     >
                         {isLoading ? (

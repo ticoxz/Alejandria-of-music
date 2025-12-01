@@ -205,7 +205,28 @@ class FileUtils:
         arch = arch_map.get(arch, arch)
 
         # Check FFmpeg binaries
-        if os.path.exists(binary_dir):
+        # 1. Check in the same directory as the executable (for portable app)
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.getcwd()
+
+        local_ffmpeg = os.path.join(base_dir, "ffmpeg-win32-x64.exe")
+        local_ffprobe = os.path.join(base_dir, "ffprobe-win32-x64.exe")
+        
+        # Also check for simple names
+        if not os.path.exists(local_ffmpeg):
+            local_ffmpeg = os.path.join(base_dir, "ffmpeg.exe")
+        if not os.path.exists(local_ffprobe):
+            local_ffprobe = os.path.join(base_dir, "ffprobe.exe")
+
+        if os.path.exists(local_ffmpeg) and os.path.exists(local_ffprobe):
+            FileUtils.ffmpeg_path = local_ffmpeg
+            FileUtils.ffprobe_path = local_ffprobe
+            console.print(f"[green]Found local FFmpeg at: {local_ffmpeg}[/green]")
+        
+        # 2. Check in binary_dir (fallback)
+        elif os.path.exists(binary_dir):
             ffmpeg_files = glob.glob(os.path.join(binary_dir, f'*ffmpeg*{arch}*'))
             ffprobe_files = glob.glob(os.path.join(binary_dir, f'*ffprobe*{arch}*'))
 

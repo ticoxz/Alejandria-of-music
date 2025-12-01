@@ -6,7 +6,41 @@ import { Save, ArrowLeft, Key, CheckCircle2, FolderOpen } from "lucide-react";
 import Link from "next/link";
 import DirectoryPicker from "../components/DirectoryPicker";
 
+const translations = {
+    es: {
+        title: "Configuración",
+        apiConfig: "Configuración de API",
+        apiDescription: "Ingresa tus credenciales de Spotify Developer.",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        downloadPath: "Ruta de Descarga",
+        audioQuality: "Calidad de Audio",
+        saveButton: "Guardar Configuración",
+        saving: "Guardando...",
+        successMessage: "Configuración guardada correctamente",
+        errorMessage: "Error al guardar",
+        connectionError: "Error de conexión",
+        browseButton: "Explorar"
+    },
+    en: {
+        title: "Settings",
+        apiConfig: "API Configuration",
+        apiDescription: "Enter your Spotify Developer credentials.",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        downloadPath: "Download Path",
+        audioQuality: "Audio Quality",
+        saveButton: "Save Settings",
+        saving: "Saving...",
+        successMessage: "Settings saved successfully",
+        errorMessage: "Error saving",
+        connectionError: "Connection error",
+        browseButton: "Browse"
+    }
+};
+
 export default function Settings() {
+    const [lang, setLang] = useState<"es" | "en">("es");
     const [clientId, setClientId] = useState("");
     const [clientSecret, setClientSecret] = useState("");
     const [downloadPath, setDownloadPath] = useState("");
@@ -16,6 +50,10 @@ export default function Settings() {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
 
     useEffect(() => {
+        // Load language from localStorage
+        const savedLang = localStorage.getItem("app_lang") as "es" | "en";
+        if (savedLang) setLang(savedLang);
+
         // Cargar configuración actual al montar
         fetch("http://localhost:8001/api/settings")
             .then((res) => res.json())
@@ -45,25 +83,27 @@ export default function Settings() {
             const response = await fetch("http://localhost:8001/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    client_id: clientId, 
+                body: JSON.stringify({
+                    client_id: clientId,
                     client_secret: clientSecret,
-                    download_path: downloadPath 
+                    download_path: downloadPath
                 }),
             });
 
             if (response.ok) {
-                setStatus("Configuración guardada correctamente");
+                setStatus(t.successMessage);
                 setTimeout(() => setStatus(null), 3000);
             } else {
-                setStatus("Error al guardar");
+                setStatus(t.errorMessage);
             }
         } catch (error) {
-            setStatus("Error de conexión");
+            setStatus(t.connectionError);
         } finally {
             setIsLoading(false);
         }
     };
+
+    const t = translations[lang];
 
     return (
         <div className="min-h-screen bg-black text-white p-8">
@@ -74,7 +114,7 @@ export default function Settings() {
                     </Link>
                     <h1 className="text-3xl font-bold flex items-center gap-3">
                         <Key className="w-8 h-8 text-green-500" />
-                        Configuración
+                        {t.title}
                     </h1>
                 </div>
 
@@ -82,17 +122,17 @@ export default function Settings() {
                     <div className="mb-8">
                         <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
                             <Key className="w-5 h-5 text-green-500" />
-                            Configuración de API
+                            {t.apiConfig}
                         </h2>
                         <p className="text-gray-400 text-sm">
-                            Ingresa tus credenciales de Spotify Developer.
+                            {t.apiDescription}
                         </p>
                     </div>
 
                     <form onSubmit={handleSave} className="space-y-6">
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Client ID
+                                {t.clientId}
                             </label>
                             <input
                                 type="text"
@@ -105,7 +145,7 @@ export default function Settings() {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Client Secret
+                                {t.clientSecret}
                             </label>
                             <input
                                 type="password"
@@ -118,7 +158,7 @@ export default function Settings() {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Carpeta de Descargas (Opcional)
+                                {t.downloadPath}
                             </label>
                             <div className="flex gap-2">
                                 <input
@@ -134,7 +174,7 @@ export default function Settings() {
                                     className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition-colors flex items-center gap-2"
                                 >
                                     <FolderOpen className="w-5 h-5" />
-                                    Examinar
+                                    {t.browseButton}
                                 </button>
                             </div>
                             <p className="mt-2 text-xs text-gray-500">
@@ -144,7 +184,7 @@ export default function Settings() {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Calidad de Audio
+                                {t.audioQuality}
                             </label>
                             <select
                                 value={quality}
@@ -155,6 +195,7 @@ export default function Settings() {
                                 <option value="192K">192 kbps - Calidad Alta</option>
                                 <option value="256K">256 kbps - Calidad Muy Alta</option>
                                 <option value="320K">320 kbps - Calidad Máxima (Recomendado)</option>
+                                <option value="FLAC">FLAC - Calidad Sin Pérdida (Hi-Res)</option>
                             </select>
                             <p className="mt-2 text-xs text-gray-500">
                                 Esta configuración se aplicará a todas las descargas futuras.
@@ -182,10 +223,10 @@ export default function Settings() {
                             className="w-full bg-green-500 text-black font-bold py-3 rounded-lg hover:bg-green-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {isLoading ? (
-                                "Guardando..."
+                                t.saving
                             ) : (
                                 <>
-                                    <Save className="w-5 h-5" /> Guardar Configuración
+                                    <Save className="w-5 h-5" /> {t.saveButton}
                                 </>
                             )}
                         </button>
